@@ -1,5 +1,5 @@
 # /bitbucket-pipelines.yml
-# Purpose: On every build, mirror to GitHub, tag using VER from tokens/_settings.scss
+# Purpose: On every build, mirror to GitHub, tag using VER from variables.scss
 # (create or force-move the tag), then purge jsDelivr for that tag+file.
 # Note: GitHub repo must be public for jsDelivr to fetch.
 
@@ -19,7 +19,7 @@ pipelines:
               apk add --no-cache git curl sed grep
 
               # Read VER from SCSS (expects: $tokens-version: "2.13")
-              FILE="tokens/_settings.scss"
+              FILE="variables.scss"
               VER=$(grep -Eo '^\$tokens-version:\s*"[^"]+"' "$FILE" | sed -E 's/.*"([^"]+)".*/\1/')
               echo "Detected VER: $VER"
               echo "$VER" | grep -Eq '^[0-9]+(\.[0-9]+){1,2}$' || { echo "Invalid VER: $VER"; exit 1; }
