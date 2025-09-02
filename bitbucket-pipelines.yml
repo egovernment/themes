@@ -27,12 +27,20 @@ pipelines:
               # Mirror Bitbucket -> GitHub (jsDelivr serves GitHub)
               : "${GITHUB_PAT:?Set repo variable GITHUB_PAT}"
               : "${GITHUB_REPO:?Set repo variable GITHUB_REPO in form org/repo}"
-              git config --global user.name "bitbucket-pipelines"
-              git config --global user.email "ci@bitbucket.org"
+              git config --global user.name "jenkins"
+              git config --global user.email "integrator@businessfacilitation.org"
               git fetch --tags || true
               GH="https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPO}.git"
-              git remote add github "$GH" 2>/dev/null || true
-              git push github HEAD:main
+
+              # Ensure the 'github' remote ALWAYS uses the PAT URL
+              if git remote | grep -qx github; then
+                git remote set-url github "$GH"
+              else
+                git remote add github "$GH"
+              fi
+
+              # Sanity check: verify we can talk to GitHub with these creds
+              git ls-remote github >/dev/null 2>&1 || { echo "Auth failed for ${GITHUB_REPO}. Check PAT scope and access."; exit 1; }
 
               # Create or force-move tag = VER to current commit, then push tag
               git tag -fa "$VER" -m "tokens $VER"
