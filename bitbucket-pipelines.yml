@@ -1,68 +1,44 @@
-# bitbucket-pipelines.yml
-# Purpose: On changes to tokens/_settings.scss, either:
-# - Normal release: create immutable vX.Y(.Z) tag + update moving alias (vX) + purge jsDelivr
-# - Override: move a selected tag (e.g., v2.15 or v2) without bumping and purge jsDelivr
+# /bitbucket-pipelines.yml
+# Purpose: On every build, mirror to GitHub, tag using VER from tokens/_settings.scss
+# (create or force-move the tag), then purge jsDelivr for that tag+file.
+# Note: GitHub repo must be public for jsDelivr to fetch.
+
+image: alpine:3.20
+
+clone:
+  depth: full
 
 pipelines:
   branches:
-    main:
+    "main":
       - step:
-          name: Release or Override tokens
-          image: alpine:3.20
+          name: Publish tokens to jsDelivr (version-as-tag)
           script:
-            - set -euo pipefail
-            - apk add --no-cache git curl jq sed grep bash
-            - git config --global user.name "jenkins"
-            - git config --global user.email "integrator@businessfacilitation.org"
-            - git fetch --tags
-
-            # 1) Extract declared version from SCSS
-            - VER=$(grep -Eo '^\$tokens-version:\s*"[^"]+"' tokens/_settings.scss | sed -E 's/.*"([^"]+)".*/\1/')
-            - echo "Detected version: $VER"
-            - [[ "$VER" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]
-
-            # 2) Detect if the file changed in this commit
             - |
-              if ! git diff --name-only HEAD~1..HEAD | grep -q '^tokens/_settings.scss$'; then
-                echo "No changes to tokens/_settings.scss; skipping." ; exit 0 ; fi
+              set -eu
+              apk add --no-cache git curl sed grep
 
-            # 3) Mirror to GitHub (so jsDelivr can serve)
-            - GH="https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPO}.git"
-            - git remote add github "$GH" || true
-            - git push github HEAD:main
+              # Read VER from SCSS (expects: $tokens-version: "2.13")
+              FILE="tokens/_settings.scss"
+              VER=$(grep -Eo '^\$tokens-version:\s*"[^"]+"' "$FILE" | sed -E 's/.*"([^"]+)".*/\1/')
+              echo "Detected VER: $VER"
+              echo "$VER" | grep -Eq '^[0-9]+(\.[0-9]+){1,2}$' || { echo "Invalid VER: $VER"; exit 1; }
 
-            # Behavior switches:
-            #   OVERRIDE=true   -> move SELECTED_TAG without bumping
-            #   SELECTED_TAG    -> which tag to move (e.g., v2 or v2.15). Defaults to v2 when overriding.
-            # Normal (no OVERRIDE): create immutable v$VER if new; also update moving major (v${VER%%.*})
-            - |
-              if [ "${OVERRIDE:-false}" = "true" ]; then
-                SEL="${SELECTED_TAG:-v${VER%%.*}}"
-                echo "OVERRIDE mode: moving tag $SEL to HEAD"
-                git tag -f "$SEL"
-                git push -f github "$SEL"
-                # Purge jsDelivr for overridden tag
-                curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@${SEL}/tokens/_settings.scss" || true
-                exit 0
-              fi
+              # Mirror Bitbucket -> GitHub (jsDelivr serves GitHub)
+              : "${GITHUB_PAT:?Set repo variable GITHUB_PAT}"
+              : "${GITHUB_REPO:?Set repo variable GITHUB_REPO in form org/repo}"
+              git config --global user.name "bitbucket-pipelines"
+              git config --global user.email "ci@bitbucket.org"
+              git fetch --tags || true
+              GH="https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPO}.git"
+              git remote add github "$GH" 2>/dev/null || true
+              git push github HEAD:main
 
-            # 4) Normal release: immutable vX.Y(.Z) + moving major alias (vX)
-            - IMMUT="v$VER"
-            - MAJOR="v${VER%%.*}"
+              # Create or force-move tag = VER to current commit, then push tag
+              git tag -fa "$VER" -m "tokens $VER"
+              git push -f github "$VER"
 
-            # Create immutable tag if not exists
-            - |
-              if git rev-parse -q --verify "refs/tags/$IMMUT" >/dev/null; then
-                echo "Immutable tag $IMMUT already exists (no retag)."
-              else
-                git tag -a "$IMMUT" -m "Release $IMMUT (tokens)"
-                git push github "$IMMUT"
-              fi
+              # Purge jsDelivr cache for this exact ref and file
+              curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@${VER}/${FILE}" || true
 
-            # Move major alias to HEAD
-            - git tag -f "$MAJOR"
-            - git push -f github "$MAJOR"
-
-            # 5) Purge jsDelivr caches for the immutable tag and the moving alias
-            - curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@${IMMUT}/tokens/_settings.scss" || true
-            - curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@${MAJOR}/tokens/_settings.scss" || true
+              echo "Published ${FILE} at jsDelivr ref @${VER}"
