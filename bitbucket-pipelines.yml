@@ -50,6 +50,6 @@ pipelines:
               git push -f github HEAD:"refs/heads/${BR}"
 
               # Purge jsDelivr cache for this exact ref and file
-              curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@v${BR}/${FILE}" || true
+              curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@${BR}/${FILE}" || true
 
               echo "Published ${FILE} at jsDelivr ref @${VER}"
