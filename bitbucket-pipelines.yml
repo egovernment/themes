@@ -43,13 +43,13 @@ pipelines:
               git ls-remote github >/dev/null 2>&1 || { echo "Auth failed for ${GITHUB_REPO}. Check PAT scope and access."; exit 1; }
 
               # Branch name used by CDN alias (avoid collision with tags)
-              BR="${VER}"
+              BR="ver/${VER}"
 
               # Create/update the GitHub branch to point at current commit (force-move ok for moving alias)
               # Push HEAD directly without creating a local branch:
               git push -f github HEAD:"refs/heads/${BR}"
 
               # Purge jsDelivr cache for this exact ref and file
-              curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@${BR}/${FILE}" || true
+              curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@v${BR}/${FILE}" || true
 
               echo "Published ${FILE} at jsDelivr ref @${VER}"
