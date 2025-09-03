@@ -46,7 +46,15 @@ pipelines:
               git tag -fa "$VER" -m "tokens $VER"
               git push -f github "$VER"
 
+              # Derive MINOR (major.minor) from VER
+              # Works for 2.13 and 2.13.2 alike (pure POSIX, no awk needed)
+              MINOR="$VER"
+              case "$VER" in
+                *.*.*) MINOR="${VER%.*}";;  # strip .patch -> 2.13
+              esac
+              echo "Purging ref: $MINOR"
+
               # Purge jsDelivr cache for this exact ref and file
-              curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@${VER}/${FILE}" || true
+              curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPO}@${MINOR}/${FILE}" || true
 
               echo "Published ${FILE} at jsDelivr ref @${VER}"
